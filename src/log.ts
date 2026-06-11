@@ -16,8 +16,8 @@ import {
  *
  * 设计要点：
  *  - `id`：本条日志主键（snowflake）；与账户域的 `uid`（userId）区分
- *  - `account: { uid, iamUserUid }`：租户身份——`uid` 是主账户 userId（扣费主体），
- *    `iamUserUid` 是 IAM 子账户 userId（实际调用者）；与后端 `LogAccountDto` 一一对应
+ *  - `account: { uid, iamUid }`：租户身份——`uid` 是主账户 userId（扣费主体），
+ *    `iamUid` 是 IAM 子账户 userId（实际调用者）；对应后端 `LogAccountDto.iamUserUid`（adapter 映射改名）
  *  - `providerId` 是**供应商表的 int 主键**（非 string UID）
  *  - `modelName` 即用户请求体里的 `model` 字段（对外别名），快照字段
  *  - **`billingType` 是判别字段**：`usage` / `cost` 的形状随它变化
@@ -169,11 +169,11 @@ const logEntryBaseShape = {
   /**
    * 租户身份聚合对象（对应后端 `LogAccountDto`）：
    * - `uid`：主账户 userId（扣费主体，billing 主键）
-   * - `iamUserUid`：IAM 子账户 userId（实际操作者）；主账户直接调用时为 null
+   * - `iamUid`：IAM 子账户 userId（实际操作者）；对应后端 wire `iamUserUid`，由 adapter 映射；主账户直接调用时为 null
    */
   account: z.object({
     uid: uidString,
-    iamUserUid: uidString.nullable().optional(),
+    iamUid: uidString.nullable().optional(),
     /** 账户昵称 / 组织名（BFF enrich 自 Keystone）。 */
     displayName: z.string().nullish(),
     /** 主账户联系邮箱。 */
@@ -301,8 +301,8 @@ export type LogEntryBillingType = z.infer<typeof billingTypeSchema>;
 export interface ListLogsFilter {
   /** 主账户 userId 精确匹配（= `account.uid`） */
   accountUid?: string;
-  /** IAM 子账户 userId 精确匹配（= `account.iamUserUid`） */
-  iamUserUid?: string;
+  /** IAM 子账户 userId 精确匹配（= `account.iamUid`）；请求出参由 adapter 映射回后端 wire `iamUserUid`。 */
+  iamUid?: string;
   /** 模糊匹配 `modelName` */
   modelName?: string;
   /** 按渠道（供应商组）精确过滤；匹配定价快照绑定的 `vendorKey`。 */

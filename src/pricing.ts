@@ -100,8 +100,8 @@ const pricingBaseShape = {
   /** 生效时间（UTC）；未来时间 = 预生效。 */
   effectiveFromUtc: epochMillisSchema,
   updatedAtUtc: epochMillisSchema,
-  /** 最近一次改动操作人（IAM userId） */
-  updatedBy: z.object({ iamUserUid: uidString }).nullable().optional(),
+  /** 最近一次改动操作人（IAM userId；对应后端 wire `iamUserUid`，由 adapter 映射） */
+  updatedBy: z.object({ iamUid: uidString }).nullable().optional(),
 };
 
 // ---------- 主 schema（discriminated union） ----------
