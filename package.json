@@ -1,0 +1,30 @@
+{
+  "name": "@demux/common",
+  "version": "0.1.0",
+  "description": "DemuxAi 平台前端公共契约：Zod schema + 推断类型，单一真源，跨 demuxai-web / meeko-console 共享（一处修改，处处生效）。",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./*": {
+      "types": "./src/*.ts",
+      "import": "./src/*.ts"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "zod": "^4.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "zod": "^4.4.3"
+  }
+}
