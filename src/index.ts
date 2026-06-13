@@ -16,3 +16,4 @@ export * from './provider';
 export * from './model';
 export * from './token';
 export * from './redemption';
+export * from './voucher';
