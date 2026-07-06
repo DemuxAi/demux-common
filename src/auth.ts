@@ -23,7 +23,7 @@ export const AuthReasonCodeLabel: Readonly<Record<AuthReasonCode, string>> = {
   email_not_registered: '该邮箱尚未注册',
   login_rate_limited: '登录尝试过于频繁, 请稍后再试',
   invalid_password: '密码错误',
-  invalid_credentials: '账号或密码错误',
+  invalid_credentials: '邮箱或密码错误',
   iam_login_fields_required: '请填写账户 ID、用户名和密码',
 };
 
