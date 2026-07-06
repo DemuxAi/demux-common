@@ -10,6 +10,7 @@ export * from './lib/uid';
 export * from './lib/epoch';
 export * from './envelope';
 export * from './enums';
+export * from './auth';
 export * from './log';
 export * from './pricing';
 export * from './provider';

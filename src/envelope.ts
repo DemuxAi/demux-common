@@ -30,8 +30,10 @@ export interface ProblemDetails {
   status?: number;
   detail?: string;
   instance?: string;
-  /** 应用错误码（如 `invalid_credentials`、`email_in_use`）。 */
+  /** HTTP 类别码 (如 `GEN_01` validation). */
   code?: string;
+  /** 域级 reason 码 (如 `email_invalid`), 供前端 i18n 映射. */
+  reason?: string;
   /** 可选的逐字段校验错误。 */
   errors?: Record<string, string[]>;
   [key: string]: unknown;
