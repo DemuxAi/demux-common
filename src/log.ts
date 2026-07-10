@@ -164,6 +164,8 @@ export type PerCharacterCost = z.infer<typeof perCharacterCostSchema>;
 
 const logEntryBaseShape = {
   id: uidString,
+  /** 请求链路 TraceId（幂等键 / 账单 idempotency_key）。 */
+  traceId: z.string().min(1).nullable().optional(),
   /** 调用发生时间（Unix 毫秒 UTC）。 */
   createAt: epochMillisSchema,
   /**
@@ -312,7 +314,15 @@ export interface ListLogsFilter {
   apiType?: ApiType;
   /** 会话 ID 精确匹配 */
   convId?: string;
-  /** 必传时间范围以防全表扫；UI 默认填最近 24h */
+  /** 调用日志号（`LogEntry.id`）精确匹配 */
+  logId?: string;
+  /** TraceId 精确匹配 */
+  traceId?: string;
+  /** 账单 UID（`LogEntry.bill.id` / Commit 流水号）精确匹配 */
+  billUid?: string;
+  /** 邮箱 / 手机 / 昵称模糊匹配（服务端经账户索引解析后再筛日志） */
+  contactKeyword?: string;
+  /** 必传时间范围以防全表扫；UI 默认填最近 24h；精确 logId / billUid 检索时可省略 */
   fromUtc?: number;
   toUtc?: number;
   /** 仅看失败调用（`success === false`）。 */
