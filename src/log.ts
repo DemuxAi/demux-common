@@ -183,6 +183,8 @@ const logEntryBaseShape = {
     /** 主账户联系手机。 */
     phone: z.string().nullish(),
   }),
+  /** 请求链路 TraceId（幂等键 / 账单 idempotency_key）。 */
+  traceId: z.string().min(1).nullable().optional(),
   /** 多轮对话的会话 ID；无会话上下文时为 null。 */
   convId: z.string().min(1).nullable().optional(),
   /** 调用来源令牌快照。sk- 后端调用时有 `{ id, name }`；PG 页面直发时为 null（UI 显示 "Chat"）。 */
