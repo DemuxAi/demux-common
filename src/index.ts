@@ -1,5 +1,5 @@
 /**
- * `@demux/common` —— DemuxAi 平台前端公共契约（单一真源）。
+ * `@demux/common` —— Demux 平台前端公共契约（单一真源）。
  *
  * Zod schema + 推断类型，跨 `demuxai-web` / `meeko-console` 共享。
  * 形状对齐后端 `Meeko.Contracts`（wire camelCase，long → string）。

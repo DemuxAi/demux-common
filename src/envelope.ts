@@ -5,7 +5,7 @@
  */
 
 /**
- * Legacy ApiEnvelope，用于 `/demuxai/api/*` 与 BFF 端点。Keystone 的 `/auth/*`
+ * Legacy ApiEnvelope，用于 `/demux/api/*` 与 BFF 端点。Keystone 的 `/auth/*`
  * 与 `/api/user/*` 直接返回 `T`（失败时 RFC 7807 ProblemDetails）。
  */
 export interface ApiEnvelope<T = unknown> {

@@ -1,7 +1,7 @@
 {
   "name": "@demux/common",
   "version": "0.1.0",
-  "description": "DemuxAi 平台前端公共契约：Zod schema + 推断类型，单一真源，跨 demuxai-web / meeko-console 共享（一处修改，处处生效）。",
+  "description": "Demux 平台前端公共契约：Zod schema + 推断类型，单一真源，跨 demuxai-web / meeko-console 共享（一处修改，处处生效）。",
   "type": "module",
   "exports": {
     ".": {

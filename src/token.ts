@@ -35,7 +35,7 @@ export interface TokenKeyParts {
   key: string;
 }
 
-/** `POST`（create）/ `PUT`（update）on `/demuxai/api/token` 的入参。 */
+/** `POST`（create）/ `PUT`（update）on `/demux/api/token` 的入参。 */
 export interface TokenWritePayload {
   /** 更新必填；创建时省略。 */
   id?: string;

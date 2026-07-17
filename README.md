@@ -1,13 +1,13 @@
 # @demux/common
 
-DemuxAi 平台前端**公共契约**——单一真源（single source of truth）。
+Demux 平台前端**公共契约**——单一真源（single source of truth）。
 
 导出 **Zod schema + 推断类型**，跨 `demuxai-web`（Nuxt）与 `meeko-console`（Vite）共享，
 让平台公共类型「一处修改，处处生效」。形状对齐后端 `Meeko.Contracts` 的 wire 约定：
 
 - 所有字段 **camelCase**；
 - 所有 `long` 标识符序列化为 **string**（`uidString`，避免 JS 53-bit 精度丢失）；
-- 时间为 Unix 毫秒（Keystone）/ Unix 秒（部分 DemuxAi legacy），各 schema 注释标注。
+- 时间为 Unix 毫秒（Keystone）/ Unix 秒（部分 Demux legacy），各 schema 注释标注。
 
 ## 用法
 
