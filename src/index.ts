@@ -18,3 +18,10 @@ export * from './model';
 export * from './token';
 export * from './redemption';
 export * from './voucher';
+export {
+  logStatsBucketSchema,
+  logStatsErrorCodeSchema,
+  logStatsSchema,
+  logStatsTopModelSchema,
+  logStatsTopProviderSchema,
+} from './log';

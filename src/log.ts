@@ -392,6 +392,50 @@ export interface LogStats {
   errorCodes: LogStatsErrorCode[];
 }
 
+export const logStatsBucketSchema = z.object({
+  tsUtc: epochMillisSchema,
+  calls: z.number().int().nonnegative(),
+  errors: z.number().int().nonnegative(),
+  cost: z.number().nonnegative(),
+  tokens: z.number().int().nonnegative(),
+});
+
+export const logStatsTopModelSchema = z.object({
+  modelName: z.string(),
+  calls: z.number().int().nonnegative(),
+  cost: z.number().nonnegative(),
+  errorRate: z.number().min(0).max(1),
+});
+
+export const logStatsTopProviderSchema = z.object({
+  providerId: z.number().int().nonnegative(),
+  providerName: z.string().optional(),
+  calls: z.number().int().nonnegative(),
+  errors: z.number().int().nonnegative(),
+  avgTokenLatency: z.number().nonnegative(),
+});
+
+export const logStatsErrorCodeSchema = z.object({
+  code: z.string(),
+  count: z.number().int().nonnegative(),
+});
+
+export const logStatsSchema = z.object({
+  totalCalls: z.number().int().nonnegative(),
+  successCalls: z.number().int().nonnegative(),
+  errorCalls: z.number().int().nonnegative(),
+  avgTokenLatency: z.number().nonnegative(),
+  p95TokenLatency: z.number().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+  totalCost: z.number().nonnegative(),
+  rpm: z.number().nonnegative(),
+  bucketSizeSec: z.number().int().positive(),
+  buckets: z.array(logStatsBucketSchema),
+  topModels: z.array(logStatsTopModelSchema),
+  topProviders: z.array(logStatsTopProviderSchema),
+  errorCodes: z.array(logStatsErrorCodeSchema),
+});
+
 /** 按渠道（供应商组）聚合的消费统计行。 */
 export interface VendorConsumptionRow {
   vendorKey: string;
