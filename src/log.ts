@@ -21,8 +21,9 @@ import {
  *  - `providerId` 是**供应商表的 int 主键**（非 string UID）
  *  - `modelName` 即用户请求体里的 `model` 字段（对外别名），快照字段
  *  - **`billingType` 是判别字段**：`usage` / `cost` 的形状随它变化
- *  - **`tokenLatency` 语义按 `streamed` 切换**（ms）：流式=首字延迟(TTFT)，非流式=端到端；失败为 null
- *  - **`success`** 表达成败二元；**`status`** 是更细的结算态（pending/success/failure/cancelled）
+ *  - **`content`** 是后端 `usage_logs.content` jsonb 的镜像（协议 / 响应码 / 流式 / 会话 /
+ *    耗时 / 来源 IP / 错误），与 `usage` / `cost` 平级；失败原因在 `content.error`
+ *  - **`status`** 是成败的唯一真源（pending/success/failure/cancelled），没有单独的 `success` 布尔
  */
 
 // ---------- usage 子形状（按 billingType） ----------
@@ -160,6 +161,42 @@ export const perCharacterCostSchema = z.object({
 });
 export type PerCharacterCost = z.infer<typeof perCharacterCostSchema>;
 
+// ---------- content：请求上下文（后端 usage_logs.content jsonb 镜像） ----------
+
+/**
+ * 一次调用的请求上下文，与 `usage` / `cost` 平级的折叠对象，逐字对应后端
+ * `usage_logs.content` jsonb 列。
+ *
+ * 结算状态不在这里——那是独立的 `status` 列（见 `logEntryBaseShape.status`）；
+ * 上游 HTTP 码只有 `statusCode` 一处，`error` 里不再重复。
+ */
+export const logContentSchema = z.object({
+  /** 该次调用走的协议；未知时为 null。 */
+  protocol: apiTypeSchema.nullable().optional(),
+  /** 上游 HTTP 响应码；null 表示未抵达上游。 */
+  statusCode: z.number().int().nonnegative().nullable().optional(),
+  /** 是否流式。 */
+  streamed: z.boolean(),
+  /** 多轮对话的会话 ID；无会话上下文时为 null。 */
+  convId: z.string().min(1).nullable().optional(),
+  /**
+   * 调用耗时（ms）。语义随 `streamed` 切换：流式=首字延迟(TTFT)，非流式=端到端总耗时。
+   * null = 未知（如"调用中"尚未回报）；失败行仍会带上失败前的耗时。
+   */
+  latencyMs: z.number().int().nonnegative().nullable().optional(),
+  /** 调用方来源 IP，点分字符串（后端已还原真实用户 IP）。 */
+  clientIp: z.string().min(1).nullable().optional(),
+  /** 失败原因；`status === 'success'` 时为 null。HTTP 码见同级 `statusCode`。 */
+  error: z
+    .object({
+      code: z.string().min(1),
+      message: z.string().max(512).nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+});
+export type LogContent = z.infer<typeof logContentSchema>;
+
 // ---------- LogEntry 共通字段 ----------
 
 const logEntryBaseShape = {
@@ -183,8 +220,6 @@ const logEntryBaseShape = {
     /** 主账户联系手机。 */
     phone: z.string().nullish(),
   }),
-  /** 多轮对话的会话 ID；无会话上下文时为 null。 */
-  convId: z.string().min(1).nullable().optional(),
   /** 调用来源令牌快照。sk- 后端调用时有 `{ id, name }`；PG 页面直发时为 null（UI 显示 "Chat"）。 */
   token: z
     .object({
@@ -201,33 +236,12 @@ const logEntryBaseShape = {
   vendorModel: z.string().nullable().optional(),
   /** 命中渠道 int 主键；best-effort，上游未能解析时为 null。 */
   providerId: z.number().int().positive().nullable().optional(),
-  /** 该次调用走的协议；未知时为 null。 */
-  protocol: apiTypeSchema.nullable().optional(),
   /**
-   * 单位 ms。语义随 `streamed` 切换：流式=首字延迟(TTFT)，非流式=端到端总耗时，失败=null。
+   * 结算状态，成败的唯一真源：`success` 以外都算失败，失败原因见 `content.error`。
    */
-  tokenLatency: z.number().int().nonnegative().nullable(),
-  /**
-   * 是否调用成功（二元）。`true`→`error` 必为 null；`false`→必有 `error`，从 `error.code` 区分失败原因。
-   */
-  success: z.boolean(),
-  /**
-   * 结算状态（比 `success` 二元值表达力更强）。旧后端不下发时为 undefined，
-   * UI 回退按 `success` 推断（true→success / false→failure）。
-   */
-  status: aiUsageStatusSchema.optional(),
-  /** `success === true` 时为 null，否则 `{ code, message, httpStatus }`。 */
-  error: z
-    .object({
-      code: z.string().min(1),
-      message: z.string().max(512).nullable(),
-      httpStatus: z.number().int().nonnegative(),
-    })
-    .nullable(),
-  /** 调用方 IPv4，**网络字节序 uint32**（非点分字符串）；展示用 `formatIpv4`。 */
-  clientIpV4: z.number().int().nonnegative().nullable().optional(),
-  /** 是否流式 */
-  streamed: z.boolean(),
+  status: aiUsageStatusSchema,
+  /** 请求上下文（协议 / 响应码 / 流式 / 会话 / 耗时 / 来源 IP / 错误）。 */
+  content: logContentSchema,
   /**
    * 关联账单（钱包扣费事件）快照。一次成功扣费必有一条 Bill；历史导入 / 未 join 时为 null。
    * 驳回就地改原账单：`status='reversed'` + 嵌套 `reversal` 对象。
@@ -298,6 +312,11 @@ export type LogEntry = z.infer<typeof logEntrySchema>;
 
 export type LogEntryBillingType = z.infer<typeof billingTypeSchema>;
 
+/** 成败判定的唯一入口：`status` 之外没有别的真源，`success` 以外都算失败。 */
+export function logIsSuccess(row: Pick<LogEntry, 'status'>): boolean {
+  return row.status === 'success';
+}
+
 // ---------- Filter / Stats ----------
 
 export interface ListLogsFilter {
@@ -311,8 +330,9 @@ export interface ListLogsFilter {
   vendorKey?: string;
   /** 命中渠道的 int 主键（= `Provider.id`） */
   providerId?: number;
+  /** 精确过滤 `content.protocol` */
   protocol?: ApiType;
-  /** 会话 ID 精确匹配 */
+  /** 会话 ID 精确匹配（`content.convId`） */
   convId?: string;
   /** 调用日志号（`LogEntry.id`）精确匹配 */
   logId?: string;
@@ -325,9 +345,9 @@ export interface ListLogsFilter {
   /** 必传时间范围以防全表扫；UI 默认填最近 24h；精确 logId / billUid 检索时可省略 */
   fromUtc?: number;
   toUtc?: number;
-  /** 仅看失败调用（`success === false`）。 */
+  /** 仅看失败调用（`status !== 'success'`）。 */
   errorOnly?: boolean;
-  /** 精确过滤 `error.code`（仅对失败记录生效）。 */
+  /** 精确过滤 `content.error.code`（仅对失败记录生效）。 */
   errorCode?: string;
 }
 
@@ -358,7 +378,7 @@ export interface LogStatsTopProvider {
   providerName?: string;
   calls: number;
   errors: number;
-  /** 平均首字延迟（TTFT），仅 `streamed && success` 样本入聚合。单位 ms。 */
+  /** 平均首字延迟（TTFT），仅 `content.streamed` 的成功样本入聚合。单位 ms。 */
   avgTokenLatency: number;
 }
 
@@ -372,7 +392,7 @@ export interface LogStats {
   totalCalls: number;
   successCalls: number;
   errorCalls: number;
-  /** 平均首字延迟（TTFT），ms。仅 `streamed && success` 样本入聚合。 */
+  /** 平均首字延迟（TTFT），ms。仅 `content.streamed` 的成功样本入聚合。 */
   avgTokenLatency: number;
   /** P95 首字延迟（TTFT），ms（与 avg 同口径）。 */
   p95TokenLatency: number;
@@ -388,7 +408,7 @@ export interface LogStats {
   buckets: LogStatsBucket[];
   topModels: LogStatsTopModel[];
   topProviders: LogStatsTopProvider[];
-  /** 错误码分布（仅 `success === false`，≤ 5 条；其余合入 `other`） */
+  /** 错误码分布（仅失败调用，≤ 5 条；其余合入 `other`） */
   errorCodes: LogStatsErrorCode[];
 }
 

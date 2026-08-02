@@ -188,15 +188,14 @@ export const BillingTypeLabel: Readonly<Record<BillingType, string>> = {
 };
 
 /**
- * 调用结算状态（对应后端 `AiUsageStatus` / `AiUsageLogDto.status`），
- * 比二元 `success` 表达力更强：
+ * 调用结算状态（对应后端 `AiUsageStatus` / `AiUsageLogDto.status`），成败的唯一真源：
  * - `pending`   → "调用中"：上游已调用但 Billing 结算尚未成功，待重试结算
  * - `success`   → 成功扣费
  * - `failure`   → 调用失败（未扣费）
  * - `cancelled` → 主动取消（客户端断流 / abort）
  * - `unknown`   → 兜底未知态
  *
- * 旧后端不下发此字段时为 undefined，UI 回退按 `success` 推断（true→success / false→failure）。
+ * `success` 以外都算失败，失败原因见 `LogEntry.content.error`。
  */
 export const aiUsageStatusValues = ['pending', 'success', 'failure', 'cancelled', 'unknown'] as const;
 export type AiUsageStatus = (typeof aiUsageStatusValues)[number];
@@ -211,7 +210,7 @@ export const AiUsageStatusLabel: Readonly<Record<AiUsageStatus, string>> = {
 };
 
 /**
- * 调用日志错误码（常见值）。`LogEntry.error.code` 保持开放 string，
+ * 调用日志错误码（常见值）。`LogEntry.content.error.code` 保持开放 string，
  * 这里只列前端 UI 已知的典型值用于配色 / 国际化映射；遇到未知码走默认配色。
  */
 export const KNOWN_LOG_ERROR_CODES = [
