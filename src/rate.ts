@@ -5,15 +5,15 @@ import { uidString } from './lib/uid';
 import type { BillingType } from './enums';
 
 /**
- * 模型定价（discriminated union）。与 Model 是 1..1：每个 modelId 一条 Pricing 记录。
- * 顶层 `billingType` 是判别字段；`pricing` 嵌套对象的形状随 `billingType` 变化。
+ * 模型定价（discriminated union）。与 Model 是 1..1：每个 modelId 一条 Rate 记录。
+ * 顶层 `billingType` 是判别字段；`rate` 嵌套对象的形状随 `billingType` 变化。
  * 金额单位与钱包同币种（默认元）。
  */
 
-// ---------- pricing 子形状（按 billingType） ----------
+// ---------- rate 子形状（按 billingType） ----------
 
 /** `per_token` 单价 schema —— 单位：元 / 1M tokens。结构与 `log.cost.input/output` 对称。 */
-export const perTokenPricingSchema = z.object({
+export const perTokenRateSchema = z.object({
   input: z.object({
     perMToken: z.number().nonnegative(),
     cachedRead: z.number().nonnegative().optional(),
@@ -26,13 +26,13 @@ export const perTokenPricingSchema = z.object({
     audio: z.number().nonnegative().optional(),
   }),
 });
-export type PerTokenPricing = z.infer<typeof perTokenPricingSchema>;
+export type PerTokenRate = z.infer<typeof perTokenRateSchema>;
 
-export const perCallPricingSchema = z.object({
+export const perCallRateSchema = z.object({
   pricePerCall: z.number().nonnegative(),
   cachedPricePerCall: z.number().nonnegative().optional(),
 });
-export type PerCallPricing = z.infer<typeof perCallPricingSchema>;
+export type PerCallRate = z.infer<typeof perCallRateSchema>;
 
 export const perImageTierSchema = z.object({
   /** 例：`"1024x1024"` / `"1792x1024"` */
@@ -43,7 +43,7 @@ export const perImageTierSchema = z.object({
 });
 export type PerImageTier = z.infer<typeof perImageTierSchema>;
 
-export const perImagePricingSchema = z
+export const perImageRateSchema = z
   .object({ tiers: z.array(perImageTierSchema).min(1) })
   .refine(
     (v) => {
@@ -52,7 +52,7 @@ export const perImagePricingSchema = z
     },
     { message: 'per_image.tiers 不允许 (size, quality) 重复', path: ['tiers'] },
   );
-export type PerImagePricing = z.infer<typeof perImagePricingSchema>;
+export type PerImageRate = z.infer<typeof perImageRateSchema>;
 
 export const perVideoTierSchema = z.object({
   /** 例：`"720p"` / `"1080p"` / `"4k"` */
@@ -61,7 +61,7 @@ export const perVideoTierSchema = z.object({
 });
 export type PerVideoTier = z.infer<typeof perVideoTierSchema>;
 
-export const perVideoPricingSchema = z
+export const perVideoRateSchema = z
   .object({
     tiers: z.array(perVideoTierSchema).min(1),
     minSeconds: z.number().positive().optional(),
@@ -75,24 +75,24 @@ export const perVideoPricingSchema = z
     message: 'minSeconds 必须 ≤ maxSeconds',
     path: ['maxSeconds'],
   });
-export type PerVideoPricing = z.infer<typeof perVideoPricingSchema>;
+export type PerVideoRate = z.infer<typeof perVideoRateSchema>;
 
-export const perAudioMinutePricingSchema = z.object({
+export const perAudioMinuteRateSchema = z.object({
   pricePerMinute: z.number().nonnegative(),
 });
-export type PerAudioMinutePricing = z.infer<typeof perAudioMinutePricingSchema>;
+export type PerAudioMinuteRate = z.infer<typeof perAudioMinuteRateSchema>;
 
-export const perCharacterPricingSchema = z.object({
+export const perCharacterRateSchema = z.object({
   pricePerKChar: z.number().nonnegative(),
 });
-export type PerCharacterPricing = z.infer<typeof perCharacterPricingSchema>;
+export type PerCharacterRate = z.infer<typeof perCharacterRateSchema>;
 
 // ---------- 外层共通字段 ----------
 
-const pricingBaseShape = {
+const rateBaseShape = {
   /** 定价行主键（PRC-*）。 */
   id: uidString,
-  /** 与 Model.modelId 强一致；删除 Model 必须级联删 Pricing。 */
+  /** 与 Model.modelId 强一致；删除 Model 必须级联删 Rate。 */
   modelId: z.string().min(1),
   currency: z.string(),
   /** key 是 LV 字符串，value 是该 LV 的倍率（如 `"5" → 0.7`）。 */
@@ -106,20 +106,20 @@ const pricingBaseShape = {
 
 // ---------- 主 schema（discriminated union） ----------
 
-export const pricingSchema = z.discriminatedUnion('billingType', [
-  z.object({ ...pricingBaseShape, billingType: z.literal('per_token'), pricing: perTokenPricingSchema }),
-  z.object({ ...pricingBaseShape, billingType: z.literal('per_call'), pricing: perCallPricingSchema }),
-  z.object({ ...pricingBaseShape, billingType: z.literal('per_image'), pricing: perImagePricingSchema }),
-  z.object({ ...pricingBaseShape, billingType: z.literal('per_video'), pricing: perVideoPricingSchema }),
+export const rateSchema = z.discriminatedUnion('billingType', [
+  z.object({ ...rateBaseShape, billingType: z.literal('per_token'), rate: perTokenRateSchema }),
+  z.object({ ...rateBaseShape, billingType: z.literal('per_call'), rate: perCallRateSchema }),
+  z.object({ ...rateBaseShape, billingType: z.literal('per_image'), rate: perImageRateSchema }),
+  z.object({ ...rateBaseShape, billingType: z.literal('per_video'), rate: perVideoRateSchema }),
   z.object({
-    ...pricingBaseShape,
+    ...rateBaseShape,
     billingType: z.literal('per_audio_minute'),
-    pricing: perAudioMinutePricingSchema,
+    rate: perAudioMinuteRateSchema,
   }),
-  z.object({ ...pricingBaseShape, billingType: z.literal('per_character'), pricing: perCharacterPricingSchema }),
+  z.object({ ...rateBaseShape, billingType: z.literal('per_character'), rate: perCharacterRateSchema }),
 ]);
 
-export type Pricing = z.infer<typeof pricingSchema>;
+export type Rate = z.infer<typeof rateSchema>;
 
 // ---------- Upsert 入参（同形状，去掉 id / updatedAtUtc / updatedBy） ----------
 
@@ -130,38 +130,38 @@ const upsertBaseShape = {
   effectiveFromUtc: epochMillisSchema,
 };
 
-export const upsertPricingInputSchema = z.discriminatedUnion('billingType', [
-  z.object({ ...upsertBaseShape, billingType: z.literal('per_token'), pricing: perTokenPricingSchema }),
-  z.object({ ...upsertBaseShape, billingType: z.literal('per_call'), pricing: perCallPricingSchema }),
-  z.object({ ...upsertBaseShape, billingType: z.literal('per_image'), pricing: perImagePricingSchema }),
-  z.object({ ...upsertBaseShape, billingType: z.literal('per_video'), pricing: perVideoPricingSchema }),
+export const upsertRateInputSchema = z.discriminatedUnion('billingType', [
+  z.object({ ...upsertBaseShape, billingType: z.literal('per_token'), rate: perTokenRateSchema }),
+  z.object({ ...upsertBaseShape, billingType: z.literal('per_call'), rate: perCallRateSchema }),
+  z.object({ ...upsertBaseShape, billingType: z.literal('per_image'), rate: perImageRateSchema }),
+  z.object({ ...upsertBaseShape, billingType: z.literal('per_video'), rate: perVideoRateSchema }),
   z.object({
     ...upsertBaseShape,
     billingType: z.literal('per_audio_minute'),
-    pricing: perAudioMinutePricingSchema,
+    rate: perAudioMinuteRateSchema,
   }),
-  z.object({ ...upsertBaseShape, billingType: z.literal('per_character'), pricing: perCharacterPricingSchema }),
+  z.object({ ...upsertBaseShape, billingType: z.literal('per_character'), rate: perCharacterRateSchema }),
 ]);
 
-export type UpsertPricingInput = z.infer<typeof upsertPricingInputSchema>;
+export type UpsertRateInput = z.infer<typeof upsertRateInputSchema>;
 
 // ---------- 列表筛选 / 分组 ----------
 
-export interface ListPricingFilter {
+export interface ListRateFilter {
   /** 模糊匹配 modelId */
   keyword: string;
   billingType: BillingType | 'all';
 }
 
-export interface AliasPricingEntry {
-  alias: string;
-  pricing: Pricing;
+export interface RouteRateEntry {
+  routeKey: string;
+  rate: Rate;
 }
 
 export interface VendorModelGroup {
   vendorKey: string;
   vendorModel: string;
-  aliases: AliasPricingEntry[];
+  routeKeys: RouteRateEntry[];
 }
 
 export interface VendorModelGroupedPage {
@@ -175,20 +175,20 @@ export interface ListVendorModelGroupsFilter {
   billingType: BillingType | 'all';
 }
 
-export interface VendorPricingStatsEntry {
+export interface VendorRateStatsEntry {
   configured: number;
   unconfigured: number;
 }
 
-export type VendorPricingStatsMap = Record<string, VendorPricingStatsEntry>;
+export type VendorRateStatsMap = Record<string, VendorRateStatsEntry>;
 
-export interface UnconfiguredAlias {
-  alias: string;
+export interface UnconfiguredRoute {
+  routeKey: string;
   vendorKey: string;
   vendorModel: string;
 }
 
-export interface UnconfiguredAliasPage {
-  items: UnconfiguredAlias[];
+export interface UnconfiguredRoutePage {
+  items: UnconfiguredRoute[];
   total: number;
 }

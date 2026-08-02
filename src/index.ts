@@ -12,7 +12,7 @@ export * from './envelope';
 export * from './enums';
 export * from './auth';
 export * from './log';
-export * from './pricing';
+export * from './rate';
 export * from './provider';
 export * from './model';
 export * from './token';

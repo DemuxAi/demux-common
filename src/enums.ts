@@ -166,7 +166,7 @@ export const ModelCapabilityLabel: Readonly<Record<ModelCapability, string>> = {
 
 /**
  * 计费类型（discriminated union 的判别字段）。
- * 每种 `billingType` 对应一种 `pricing` / `usage` / `cost` 嵌套形状。
+ * 每种 `billingType` 对应一种 `rate` / `usage` / `cost` 嵌套形状。
  */
 export const billingTypeValues = [
   'per_token',

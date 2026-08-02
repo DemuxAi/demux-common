@@ -202,7 +202,7 @@ const logEntryBaseShape = {
   /** 命中渠道 int 主键；best-effort，上游未能解析时为 null。 */
   providerId: z.number().int().positive().nullable().optional(),
   /** 该次调用走的协议；未知时为 null。 */
-  apiType: apiTypeSchema.nullable().optional(),
+  protocol: apiTypeSchema.nullable().optional(),
   /**
    * 单位 ms。语义随 `streamed` 切换：流式=首字延迟(TTFT)，非流式=端到端总耗时，失败=null。
    */
@@ -311,7 +311,7 @@ export interface ListLogsFilter {
   vendorKey?: string;
   /** 命中渠道的 int 主键（= `Provider.id`） */
   providerId?: number;
-  apiType?: ApiType;
+  protocol?: ApiType;
   /** 会话 ID 精确匹配 */
   convId?: string;
   /** 调用日志号（`LogEntry.id`）精确匹配 */
