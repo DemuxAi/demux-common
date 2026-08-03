@@ -4,11 +4,8 @@ import { epochMillisSchema } from './lib/epoch';
 import { uidString } from './lib/uid';
 import {
   aiUsageStatusSchema,
-  apiTypeSchema,
-  billingTypeSchema,
-  billReverseCodeSchema,
-  type ApiType,
   type BillReverseCode,
+  type LogProtocol,
 } from './enums';
 
 /**
@@ -18,7 +15,7 @@ import {
  *  - `id`：本条日志主键（snowflake）；与账户域的 `uid`（userId）区分
  *  - `account: { uid, iamUid }`：租户身份——`uid` 是主账户 userId（扣费主体），
  *    `iamUid` 是 IAM 子账户 userId（实际调用者）；对应后端 `LogAccountDto.iamUserUid`（adapter 映射改名）
- *  - `providerId` 是**供应商表的 int 主键**（非 string UID）
+ *  - `vendorKey` 是内部渠道键（供应商组 / queue_group），`vendorPlug` 是它对外公开的 slug
  *  - `modelName` 即用户请求体里的 `model` 字段（对外别名），快照字段
  *  - **`billingType` 是判别字段**：`usage` / `cost` 的形状随它变化
  *  - **`content`** 是后端 `usage_logs.content` jsonb 的镜像（协议 / 响应码 / 流式 / 会话 /
@@ -71,14 +68,18 @@ export const perCallUsageSchema = z.object({
 });
 export type PerCallUsage = z.infer<typeof perCallUsageSchema>;
 
+/**
+ * tier 的两个维度不加 `min(1)`：老日志的 `usage` jsonb 是 token 形，后端按图片形反序列化
+ * 时 tier 会落成空串。为一个展示字段判整行 parse 失败不划算，UI 侧空串回退 `—`。
+ */
 export const perImageUsageSchema = z.object({
-  tier: z.object({ size: z.string().min(1), quality: z.string().min(1) }),
-  count: z.number().int().positive(),
+  tier: z.object({ size: z.string(), quality: z.string() }),
+  count: z.number().int().nonnegative(),
 });
 export type PerImageUsage = z.infer<typeof perImageUsageSchema>;
 
 export const perVideoUsageSchema = z.object({
-  tier: z.object({ resolution: z.string().min(1) }),
+  tier: z.object({ resolution: z.string() }),
   seconds: z.number().nonnegative(),
 });
 export type PerVideoUsage = z.infer<typeof perVideoUsageSchema>;
@@ -171,8 +172,15 @@ export type PerCharacterCost = z.infer<typeof perCharacterCostSchema>;
  * 上游 HTTP 码只有 `statusCode` 一处，`error` 里不再重复。
  */
 export const logContentSchema = z.object({
-  /** 该次调用走的协议；未知时为 null。 */
-  protocol: apiTypeSchema.nullable().optional(),
+  /**
+   * 该次调用走的协议（`openai_chat` / `anthropic_messages` / …），未知时为 null。
+   *
+   * 刻意不收成枚举：这一列是历史数据的堆积，迁移前写的是协议族（`openai`），
+   * 迁移后写的是具体端点（`openai_chat`），网关以后新增端点也会先落库再更新前端。
+   * 收紧成 enum 只会让整条日志 parse 失败、连带别的字段一起显示不出来。
+   * 展示走 `logProtocolText()`，未登记的取值原样透出。
+   */
+  protocol: z.string().min(1).nullable().optional(),
   /** 上游 HTTP 响应码；null 表示未抵达上游。 */
   statusCode: z.number().int().nonnegative().nullable().optional(),
   /** 是否流式。 */
@@ -186,11 +194,18 @@ export const logContentSchema = z.object({
   latencyMs: z.number().int().nonnegative().nullable().optional(),
   /** 调用方来源 IP，点分字符串（后端已还原真实用户 IP）。 */
   clientIp: z.string().min(1).nullable().optional(),
-  /** 失败原因；`status === 'success'` 时为 null。HTTP 码见同级 `statusCode`。 */
+  /**
+   * 失败原因；`status === 'success'` 时为 null。HTTP 码见同级 `statusCode`。
+   *
+   * `code` 是开放取值：平台自判的码（`zero_output` / `billing_commit_failed` / `expired`）、
+   * 上游上报的码、以及后端拿 HTTP 状态顶上的纯数字串都会出现在这里，
+   * 展示统一走 `logErrorCodeText()`。`message` 不设长度上限——上游堆栈能有多长算多长，
+   * 截断该是后端的事，前端为此判 parse 失败只会连累同一行的其它字段。
+   */
   error: z
     .object({
       code: z.string().min(1),
-      message: z.string().max(512).nullable().optional(),
+      message: z.string().nullable().optional(),
     })
     .nullable()
     .optional(),
@@ -230,12 +245,15 @@ const logEntryBaseShape = {
     .optional(),
   /** 对外暴露的模型名（= 用户请求体里的 `model` 字段）。 */
   modelName: z.string(),
-  /** 命中渠道（供应商组）。来自别名快照绑定；未绑定时为 null。 */
+  /** 命中渠道的内部键（供应商组 / queue_group）。来自别名快照绑定；未绑定时为 null。 */
   vendorKey: z.string().nullable().optional(),
+  /**
+   * 该渠道对外公开的 slug（如 `nai` / `pa`），后端由 `vendorKey` 反查 `Vendor.VendorSlug` 得到。
+   * 展示渠道时优先用它——`vendorKey` 是内部代号，不该直接摆给运营看。未配置 slug 时为 null。
+   */
+  vendorPlug: z.string().nullable().optional(),
   /** 命中的上游真实模型名（vendor_model）。来自别名快照绑定；未绑定时为 null。 */
   vendorModel: z.string().nullable().optional(),
-  /** 命中渠道 int 主键；best-effort，上游未能解析时为 null。 */
-  providerId: z.number().int().positive().nullable().optional(),
   /**
    * 结算状态，成败的唯一真源：`success` 以外都算失败，失败原因见 `content.error`。
    */
@@ -258,7 +276,12 @@ const logEntryBaseShape = {
         reversal: z.object({
           atUtc: epochMillisSchema,
           by: z.string().nullable(),
-          code: billReverseCodeSchema,
+          /**
+           * 驳回原因码。后端是从账单备注里劈出来的开放字符串（`LogBillReversalDto.Code` 为
+           * `string?`），未必落在 `billReverseCodeValues` 里，也可能整个为 null，
+           * 所以这里不收成枚举——财务记了什么就显示什么，走 `billReverseCodeText()`。
+           */
+          code: z.string().nullable().optional(),
           remark: z.string().nullable().optional(),
         }),
       }),
@@ -306,11 +329,26 @@ export const logEntrySchema = z.discriminatedUnion('billingType', [
     usage: perCharacterUsageSchema,
     cost: perCharacterCostSchema,
   }),
+  /**
+   * 定价快照缺失时后端下发的兜底分支（`UsageLogMapper`：`rate?.BillingType ?? "unknown"`）——
+   * 多见于费率行被删、或日志早于当前定价体系。此时 `usage` / `cost` 仍是 token 形，
+   * 只是 `cost` 各维度全为 0、只有 `total` 有值，所以直接复用 per_token 的形状。
+   *
+   * 单列一个分支而不是把 `unknown` 塞进 `billingTypeValues`：那个枚举同时是费率页
+   * 新建费率的选项来源，多出一个"未知"选项会让运营真的建出一条未知计费的费率。
+   */
+  z.object({
+    ...logEntryBaseShape,
+    billingType: z.literal('unknown'),
+    usage: perTokenUsageSchema,
+    cost: perTokenCostSchema,
+  }),
 ]);
 
 export type LogEntry = z.infer<typeof logEntrySchema>;
 
-export type LogEntryBillingType = z.infer<typeof billingTypeSchema>;
+/** 日志行的判别字段取值：正常的计费类型，外加定价快照缺失时的 `unknown`。 */
+export type LogEntryBillingType = LogEntry['billingType'];
 
 /** 成败判定的唯一入口：`status` 之外没有别的真源，`success` 以外都算失败。 */
 export function logIsSuccess(row: Pick<LogEntry, 'status'>): boolean {
@@ -328,10 +366,8 @@ export interface ListLogsFilter {
   modelName?: string;
   /** 按渠道（供应商组）精确过滤；匹配定价快照绑定的 `vendorKey`。 */
   vendorKey?: string;
-  /** 命中渠道的 int 主键（= `Provider.id`） */
-  providerId?: number;
   /** 精确过滤 `content.protocol` */
-  protocol?: ApiType;
+  protocol?: LogProtocol;
   /** 会话 ID 精确匹配（`content.convId`） */
   convId?: string;
   /** 调用日志号（`LogEntry.id`）精确匹配 */
@@ -372,9 +408,9 @@ export interface LogStatsTopModel {
 }
 
 export interface LogStatsTopProvider {
-  /** 渠道 int 主键（= `Provider.id`） */
-  providerId: number;
-  /** 渠道展示名（服务端 join Vendor 解析） */
+  /** 渠道键（= `vendors.queue_group`），排行的分组键与稳定 row key。 */
+  vendorKey: string;
+  /** 渠道展示名（服务端优先取 VendorSlug，回退 queue_group） */
   providerName?: string;
   calls: number;
   errors: number;
@@ -428,7 +464,7 @@ export const logStatsTopModelSchema = z.object({
 });
 
 export const logStatsTopProviderSchema = z.object({
-  providerId: z.number().int().nonnegative(),
+  vendorKey: z.string(),
   providerName: z.string().optional(),
   calls: z.number().int().nonnegative(),
   errors: z.number().int().nonnegative(),

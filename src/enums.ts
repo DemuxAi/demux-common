@@ -41,6 +41,44 @@ export const ApiTypeLabel: Readonly<Record<ApiType, string>> = {
 };
 
 /**
+ * 一次调用实际走的 HTTP 协议，即后端 `usage_logs.content.protocol`
+ * （C# `Demux.Gateway.Application.Llm.Billing.ApiProtocol` 的常量值）。
+ *
+ * **别和上面的 `apiType` 混为一谈**：`apiType` 是 Provider 侧的协议族（选哪家上游），
+ * 这里是调用侧的具体端点（走哪个 API）。两者取值空间完全不同，
+ * 用 `apiType` 的标签表去查 `protocol` 只会查出 undefined。
+ */
+export const logProtocolValues = [
+  'openai_chat',
+  'openai_responses',
+  'anthropic_messages',
+  'gemini_generate_content',
+] as const;
+export type LogProtocol = (typeof logProtocolValues)[number];
+
+/**
+ * 协议展示名。除当前枚举外还登记了迁移前的协议族写法
+ * （`ReshapeUsageLogVendorKeyAndContent` 之前落库的 `openai` / `anthropic` / `gemini`），
+ * 老日志行同样要能显示出名字。
+ */
+export const LogProtocolLabel: Readonly<Record<string, string>> = {
+  openai_chat: 'OpenAI Chat Completions',
+  openai_responses: 'OpenAI Responses',
+  anthropic_messages: 'Anthropic Messages',
+  gemini_generate_content: 'Gemini GenerateContent',
+  openai: 'OpenAI（旧）',
+  anthropic: 'Anthropic（旧）',
+  gemini: 'Gemini（旧）',
+};
+
+/** 协议 → 展示名；未登记的取值原样返回，空值给 `—`。 */
+export function logProtocolText(protocol: string | null | undefined): string {
+  const key = protocol?.trim();
+  if (!key) return '—';
+  return LogProtocolLabel[key] ?? key;
+}
+
+/**
  * Provider 状态。
  * - `enabled`：正常参与路由
  * - `disabled`：人工禁用，路由跳过
@@ -188,6 +226,17 @@ export const BillingTypeLabel: Readonly<Record<BillingType, string>> = {
 };
 
 /**
+ * 计费类型 → 展示名。日志行可能带 `unknown`（定价快照缺失，见 `logEntrySchema`），
+ * 它不属于 `billingTypeValues`，故查表要走这个兜底而不是直接索引 `BillingTypeLabel`。
+ */
+export function billingTypeText(type: string | null | undefined): string {
+  const key = type?.trim();
+  if (!key) return '—';
+  if (key === 'unknown') return '未知计费';
+  return (BillingTypeLabel as Record<string, string>)[key] ?? key;
+}
+
+/**
  * 调用结算状态（对应后端 `AiUsageStatus` / `AiUsageLogDto.status`），成败的唯一真源：
  * - `pending`   → "调用中"：上游已调用但 Billing 结算尚未成功，待重试结算
  * - `success`   → 成功扣费
@@ -212,8 +261,16 @@ export const AiUsageStatusLabel: Readonly<Record<AiUsageStatus, string>> = {
 /**
  * 调用日志错误码（常见值）。`LogEntry.content.error.code` 保持开放 string，
  * 这里只列前端 UI 已知的典型值用于配色 / 国际化映射；遇到未知码走默认配色。
+ *
+ * 前四个是平台自己判定的码（`QuotaMeter` / 过期回收任务写入），其余是网关或上游上报的。
+ * 上游没给码时后端会拿 HTTP 状态码字符串顶上（"500" / "429" …），
+ * 这种纯数字码不进字典，由 {@link logErrorCodeText} 统一渲染成 `HTTP 500`。
  */
 export const KNOWN_LOG_ERROR_CODES = [
+  'billing_commit_failed',
+  'zero_output',
+  'expired',
+  'upstream_error',
   'upstream_5xx',
   'upstream_4xx',
   'upstream_timeout',
@@ -226,6 +283,10 @@ export const KNOWN_LOG_ERROR_CODES = [
 export type KnownLogErrorCode = (typeof KNOWN_LOG_ERROR_CODES)[number];
 
 export const LogErrorCodeLabel: Readonly<Record<KnownLogErrorCode, string>> = {
+  billing_commit_failed: '结算未完成',
+  zero_output: '无计费产出',
+  expired: '预扣已过期',
+  upstream_error: '上游异常',
   upstream_5xx: '上游 5xx',
   upstream_4xx: '上游 4xx',
   upstream_timeout: '上游超时',
@@ -235,6 +296,15 @@ export const LogErrorCodeLabel: Readonly<Record<KnownLogErrorCode, string>> = {
   auth_failed: '鉴权失败',
   unknown: '未知错误',
 };
+
+/** 错误码 → 展示名；纯 HTTP 数字码渲染成 `HTTP 500`，未登记码原样返回。 */
+export function logErrorCodeText(code: string | null | undefined): string {
+  const key = code?.trim();
+  if (!key) return '—';
+  const known = (LogErrorCodeLabel as Record<string, string>)[key];
+  if (known) return known;
+  return /^\d{3}$/.test(key) ? `HTTP ${key}` : key;
+}
 
 /**
  * 日志对应账单的状态（精简版）。完整枚举见 `docs/api/05-billing-bills.md`；
@@ -269,6 +339,16 @@ export const BillReverseCodeLabel: Readonly<Record<BillReverseCode, string>> = {
   manual_correction: '人工纠错',
 };
 
+/**
+ * 驳回原因码 → 展示名。日志行里的 `bill.reversal.code` 是后端从账单备注劈出来的开放字符串，
+ * 未必落在枚举里，故不能直接索引 {@link BillReverseCodeLabel}。
+ */
+export function billReverseCodeText(code: string | null | undefined): string {
+  const key = code?.trim();
+  if (!key) return '—';
+  return (BillReverseCodeLabel as Record<string, string>)[key] ?? key;
+}
+
 /** 驳回原因码的简要说明，提示 admin 该场景何时使用 */
 export const BillReverseCodeHint: Readonly<Record<BillReverseCode, string>> = {
   duplicate_charge: '同一次调用被重复入账',
@@ -279,6 +359,8 @@ export const BillReverseCodeHint: Readonly<Record<BillReverseCode, string>> = {
 };
 
 export const apiTypeSchema = z.enum(apiTypeValues);
+/** 过滤器用的严格协议枚举。日志行里的 `content.protocol` 走开放 string，见 `log.ts`。 */
+export const logProtocolSchema = z.enum(logProtocolValues);
 export const providerStatusSchema = z.enum(providerStatusValues);
 export const modelFamilySchema = z.enum(modelFamilyValues);
 export const modelCapabilitySchema = z.enum(modelCapabilityValues);
