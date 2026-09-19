@@ -199,7 +199,8 @@ export const logContentSchema = z.object({
    * 失败原因；`status === 'success'` 时为 null。HTTP 码见同级 `statusCode`。
    *
    * `code` 是开放取值：平台自判的码（`zero_output` / `billing_commit_failed` / `expired`）、
-   * 上游上报的码、以及后端拿 HTTP 状态顶上的纯数字串都会出现在这里，
+   * 上游上报的码、以及 4xx/5xx 时后端拿 HTTP 状态顶上的纯数字串都会出现在这里。
+   * 失败但没码也没错误 HTTP 时为 null，不捏造 `upstream_error`。
    * 展示统一走 `logErrorCodeText()`。`message` 不设长度上限——上游堆栈能有多长算多长，
    * 截断该是后端的事，前端为此判 parse 失败只会连累同一行的其它字段。
    */

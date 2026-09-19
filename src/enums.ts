@@ -263,8 +263,9 @@ export const AiUsageStatusLabel: Readonly<Record<AiUsageStatus, string>> = {
  * 这里只列前端 UI 已知的典型值用于配色 / 国际化映射；遇到未知码走默认配色。
  *
  * 前四个是平台自己判定的码（`QuotaMeter` / 过期回收任务写入），其余是网关或上游上报的。
- * 上游没给码时后端会拿 HTTP 状态码字符串顶上（"500" / "429" …），
+ * 上游没给码时：仅 4xx/5xx 才拿 HTTP 状态码字符串顶上（"500" / "429" …），
  * 这种纯数字码不进字典，由 {@link logErrorCodeText} 统一渲染成 `HTTP 500`。
+ * 失败但既没码也没错误 HTTP 时 `content.error` 为 null，不捏造 `upstream_error`。
  */
 export const KNOWN_LOG_ERROR_CODES = [
   'billing_commit_failed',
@@ -304,6 +305,19 @@ export function logErrorCodeText(code: string | null | undefined): string {
   const known = (LogErrorCodeLabel as Record<string, string>)[key];
   if (known) return known;
   return /^\d{3}$/.test(key) ? `HTTP ${key}` : key;
+}
+
+/**
+ * 列表 / 徽章要不要用错误码当标签。
+ * 空码不算；后端曾对「失败但没码」捏造过 `upstream_error`，没有摘要时也不当错误码展示。
+ */
+export function logHasErrorCode(
+  error: { code?: string | null; message?: string | null } | null | undefined,
+): boolean {
+  const code = error?.code?.trim();
+  if (!code) return false;
+  if (code === 'upstream_error' && !error?.message?.trim()) return false;
+  return true;
 }
 
 /**
