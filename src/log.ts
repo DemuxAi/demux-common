@@ -4,6 +4,7 @@ import { epochMillisSchema } from './lib/epoch';
 import { uidString } from './lib/uid';
 import {
   aiUsageStatusSchema,
+  type AiUsageStatus,
   type BillReverseCode,
   type LogProtocol,
 } from './enums';
@@ -381,7 +382,9 @@ export interface ListLogsFilter {
   /** 必传时间范围以防全表扫；UI 默认填最近 24h；精确 logId / billUid 检索时可省略 */
   fromUtc?: number;
   toUtc?: number;
-  /** 仅看失败调用（`status !== 'success'`）。 */
+  /** 精确过滤结算状态：`pending` 调用中 / `success` 成功 / `failure` 失败。 */
+  status?: AiUsageStatus;
+  /** @deprecated 用 `status`。仅看失败调用（`status !== 'success'`）。 */
   errorOnly?: boolean;
   /** 精确过滤 `content.error.code`（仅对失败记录生效）。 */
   errorCode?: string;
@@ -503,6 +506,50 @@ export interface VendorConsumptionRow {
   totalCost: number;
   /** 该渠道下出现过的上游真实模型数（去重）。 */
   upstreamModelCount: number;
+}
+
+/** 按对外模型别名聚合的消费统计行。 */
+export interface ModelConsumptionRow {
+  modelName: string;
+  /** 调用次数（仅成功调用）。 */
+  requestCount: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  /** 累计扣费（元）。 */
+  totalCost: number;
+  /** 该模型出现过的渠道数（去重 vendor_key）。 */
+  vendorCount: number;
+}
+
+/** 报表时间粒度。none = 不分时间，只出分组合计。 */
+export type ReportTimeBucket = 'hour' | 'day' | 'none';
+/** 报表拆分维度。none = 整段合计一条。 */
+export type ReportBreakdown = 'none' | 'vendor' | 'model';
+export type ReportMetric = 'cost' | 'calls' | 'tokens';
+
+export interface ConsumptionReportQuery {
+  fromUtc: number;
+  toUtc: number;
+  timeBucket: ReportTimeBucket;
+  breakdown: ReportBreakdown;
+  vendorKeys?: string[];
+  modelNames?: string[];
+}
+
+export interface ConsumptionCell {
+  bucketStartUtc: number;
+  groupKey: string;
+  requestCount: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalCost: number;
+}
+
+export interface ConsumptionReport {
+  bucketSeconds: number;
+  timeBucket: ReportTimeBucket;
+  breakdown: ReportBreakdown;
+  cells: ConsumptionCell[];
 }
 
 /** 驳回单条调用日志对应的账单。 */

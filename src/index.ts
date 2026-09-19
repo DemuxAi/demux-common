@@ -13,6 +13,7 @@ export * from './enums';
 export * from './auth';
 export * from './log';
 export * from './rate';
+export * from './maker';
 export * from './provider';
 export * from './model';
 export * from './token';
