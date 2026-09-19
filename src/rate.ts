@@ -157,13 +157,14 @@ export type UpsertRateInput = z.infer<typeof upsertRateInputSchema>;
 // ---------- 基准价表（model_prices） ----------
 
 /**
- * 全平台计价币种。基准价、有效价、账单都是人民币，价格表里没有别的币种。
- * 官方源（models.dev / OpenRouter / LiteLLM / NewAPI）报的是美元价，后端拉取时按 `USD_CNY_FIXED_RATE`
- * 折成人民币再落库；有效价 = 基准价(CNY) × 渠道倍率 × 路由倍率，编译阶段不再有汇率这一因子。
+ * 有效价 / 账单币种。价格表是美元，编译时 × 渠道倍率 × 路由倍率，最后 × `USD_CNY_FIXED_RATE`。
  */
 export const PRICE_CURRENCY = 'CNY' as const;
 
-/** 固定汇率 1 USD = 7 CNY。定死在契约里，不做运行期配置。 */
+/** 价格表 / model_prices 币种。官方源怎么报就怎么收，这里不折人民币。 */
+export const MODEL_PRICE_CURRENCY = 'USD' as const;
+
+/** 固定汇率 1 USD = 7 CNY。只在编译有效价时乘，不做运行期配置。 */
 export const USD_CNY_FIXED_RATE = 7 as const;
 
 /**
@@ -195,8 +196,8 @@ const modelPriceBaseShape = {
   modelKey: z.string().min(1),
   /** 模型厂家键（openai / anthropic / …，见 maker.ts）；价格表按它分组、按它拉官方价。 */
   maker: z.string().min(1),
-  /** 永远是 `PRICE_CURRENCY`；保留字段只为让 wire 自描述。 */
-  currency: z.literal(PRICE_CURRENCY),
+  /** 永远是 `MODEL_PRICE_CURRENCY`；保留字段只为让 wire 自描述。 */
+  currency: z.literal(MODEL_PRICE_CURRENCY),
   /**
    * 模型能力，官方目录带过来的，不由人挑。
    * `audio` / `reasoning` 决定录价放出哪些档；`embedding` 决定类型列是「向量」且只收入价。
@@ -214,7 +215,7 @@ export const modelPriceSchema = withRateUnion(modelPriceBaseShape);
 export type ModelPrice = z.infer<typeof modelPriceSchema>;
 
 /**
- * 录入基准价：金额一律按人民币填，没有币种、也没有生效时间——后端以落库时间为生效时间。
+ * 录入基准价：金额一律按美元填，没有币种、也没有生效时间——后端以落库时间为生效时间。
  * `maker` 不传时后端按键推断。
  */
 const upsertModelPriceBaseShape = {
@@ -297,9 +298,8 @@ export interface FetchSourceStatus {
 }
 
 /**
- * 某个源对某个模型键给出的报价。`rate` 已按本地 rate_json 形状归一，**且已折成人民币**：
- * 后端拿到源的美元价后乘 `fxApplied`（= `USD_CNY_FIXED_RATE`）再返回，前端展示 / 套用的都是 CNY 数值，
- * `sourceCurrency` 只用来告诉管理员原价是什么币种。
+ * 某个源对某个模型键给出的报价。`rate` 已按本地 rate_json 形状归一，**且是美元**：
+ * 价格表不折人民币；`sourceCurrency` 几乎总是 USD，`fxApplied` 为 1（源报 CNY 时为 1/7）。
  */
 export type FetchCandidate = RateBody & {
   sourceKind: string;
@@ -312,9 +312,9 @@ export type FetchCandidate = RateBody & {
   matchKind: string;
   /** 源报价的原币种（几乎总是 USD）。 */
   sourceCurrency: string;
-  /** 从 `sourceCurrency` 折到 CNY 用的倍数；源本身报 CNY 时为 1。 */
+  /** 收到价格表时施加的倍数；USD 源为 1，CNY 源为 1/7。 */
   fxApplied: number;
-  /** 折算后与当前基准价数值相同。 */
+  /** 与当前基准价（美元）数值相同。 */
   sameAsCurrent: boolean;
   /** 官方目录带来的能力；套用时原样回传，避免只从 rate JSON 再猜一遍。 */
   capabilities?: ModelCapabilities | null;
@@ -334,7 +334,7 @@ export interface FetchPricesResult {
   fetchedAtUtc: number;
 }
 
-/** 套用候选：`rate` 就是 fetch 返回的人民币数值，原样回传；`maker` 取候选里源给出的厂家。 */
+/** 套用候选：`rate` 就是 fetch 返回的美元数值，原样回传；`maker` 取候选里源给出的厂家。 */
 export type ApplyPriceItem = RateBody & {
   modelKey: string;
   maker: string;
