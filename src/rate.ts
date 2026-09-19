@@ -157,14 +157,14 @@ export type UpsertRateInput = z.infer<typeof upsertRateInputSchema>;
 // ---------- 基准价表（model_prices） ----------
 
 /**
- * 有效价 / 账单币种。价格表是美元，编译时 × 渠道倍率 × 路由倍率，最后 × `USD_CNY_FIXED_RATE`。
+ * 有效价 / 账单币种。价格表是美元，编译：美元 × 渠道倍率 = 人民币。不再另乘 7。
  */
 export const PRICE_CURRENCY = 'CNY' as const;
 
 /** 价格表 / model_prices 币种。官方源怎么报就怎么收，这里不折人民币。 */
 export const MODEL_PRICE_CURRENCY = 'USD' as const;
 
-/** 固定汇率 1 USD = 7 CNY。只在编译有效价时乘，不做运行期配置。 */
+/** 遗留 CNY 牌价折回美元用 1/7。编译不再自动乘这个数——渠道倍率由渠道自己填。 */
 export const USD_CNY_FIXED_RATE = 7 as const;
 
 /**
