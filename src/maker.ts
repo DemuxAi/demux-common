@@ -41,6 +41,7 @@ export const KNOWN_MAKERS: readonly MakerInfo[] = [
   { key: 'upstage', label: 'Upstage', order: 163, patterns: ['solar-'] },
   { key: 'inception', label: 'Inception', order: 164, patterns: ['mercury'] },
   { key: 'bfl', label: 'Black Forest Labs', order: 170, patterns: ['flux'] },
+  { key: 'novelai', label: 'NovelAI', order: 175, patterns: ['nai-diffusion'] },
   { key: 'midjourney', label: 'Midjourney', order: 180, patterns: ['midjourney', 'mj-'] },
 ];
 
