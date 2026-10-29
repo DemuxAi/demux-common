@@ -261,11 +261,6 @@ export const logContentSchema = z.object({
     .nullable()
     .optional(),
   /**
-   * 上游报的积分（Kiro 的 credits、NovelAI 的 Anlas），可以是小数。不论这条路由按什么计费都有：
-   * 按 token 计费的渠道也记，用来对账上游成本；per_credit 路由上它就是 `usage.credits` 那个数。没报为 null。
-   */
-  credits: z.number().nonnegative().nullable().optional(),
-  /**
    * 返回给调用方的终止原因原文（`stop` / `length` / `end_turn` / `max_tokens` / `MAX_TOKENS` …）。
    * 按调用方协议原样记、不归一，排查时才对得上客户端看到的；同样不收成枚举。没观测到为 null。
    */
