@@ -79,6 +79,19 @@ export function logProtocolText(protocol: string | null | undefined): string {
 }
 
 /**
+ * 终止原因里表示「输出被长度上限截断」的取值。各协议拼法不同——OpenAI Chat `length`、
+ * Anthropic `max_tokens`、Gemini `MAX_TOKENS`、OpenAI Responses `max_output_tokens`——在这一处认齐，
+ * 展示仍用原文（要和客户端看到的对得上）。
+ */
+const truncatedStopReasons: ReadonlySet<string> = new Set(['length', 'max_tokens', 'max_output_tokens']);
+
+/** 调用方拿到的是不是被截断的半截回答。排查「回答不完整」时最先要找的就是这类。 */
+export function logStopReasonTruncated(reason: string | null | undefined): boolean {
+  const key = reason?.trim().toLowerCase();
+  return key ? truncatedStopReasons.has(key) : false;
+}
+
+/**
  * Provider 状态。
  * - `enabled`：正常参与路由
  * - `disabled`：人工禁用，路由跳过
@@ -207,8 +220,11 @@ export const ModelCapabilityLabel: Readonly<Record<ModelCapability, string>> = {
  * 每种 `billingType` 对应一种 `rate` / `usage` / `cost` 嵌套形状。
  */
 export const billingTypeValues = [
+  // 跨模态通用：同一种方式可以挂在对话、生图、视频等任何模型上。
   'per_token',
   'per_call',
+  'per_credit',
+  // 模态专属：只对应一种产出。
   'per_image',
   'per_video',
   'per_audio_minute',
@@ -219,6 +235,7 @@ export type BillingType = (typeof billingTypeValues)[number];
 export const BillingTypeLabel: Readonly<Record<BillingType, string>> = {
   per_token: '按量计费',
   per_call: '按次计费',
+  per_credit: '积分计费',
   per_image: '图片计费',
   per_video: '视频计费',
   per_audio_minute: '音频计费',

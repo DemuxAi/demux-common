@@ -87,17 +87,28 @@ export const perCharacterRateSchema = z.object({
 });
 export type PerCharacterRate = z.infer<typeof perCharacterRateSchema>;
 
+/**
+ * 每 1 上游积分的单价（币种随所在表：价格表美元、有效价人民币）。
+ * 一次调用折多少积分由上游自己报（可以是 0.028 这种小数），平台从不估算，这里只定每点的钱；
+ * 所以它不绑模态——生图、对话、视频模型都可以挂这一种。
+ */
+export const perCreditRateSchema = z.object({
+  pricePerCredit: z.number().nonnegative(),
+});
+export type PerCreditRate = z.infer<typeof perCreditRateSchema>;
+
 // ---------- billingType ↔ rate 形状的 union 组装 ----------
 
 /**
- * 把「共通字段」与六种 `rate` 形状拼成 discriminated union。
+ * 把「共通字段」与各种 `rate` 形状拼成 discriminated union。
  * Rate / ModelPrice / 各类 upsert 入参共用同一份 `rate` 形状，只差外层字段，
- * 所以这里只写一次，不再手抄六行。
+ * 所以这里只写一次，不再每处手抄一遍。
  */
 function withRateUnion<TShape extends z.ZodRawShape>(shape: TShape) {
   return z.discriminatedUnion('billingType', [
     z.object({ ...shape, billingType: z.literal('per_token'), rate: perTokenRateSchema }),
     z.object({ ...shape, billingType: z.literal('per_call'), rate: perCallRateSchema }),
+    z.object({ ...shape, billingType: z.literal('per_credit'), rate: perCreditRateSchema }),
     z.object({ ...shape, billingType: z.literal('per_image'), rate: perImageRateSchema }),
     z.object({ ...shape, billingType: z.literal('per_video'), rate: perVideoRateSchema }),
     z.object({

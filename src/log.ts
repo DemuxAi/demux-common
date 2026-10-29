@@ -95,6 +95,49 @@ export const perCharacterUsageSchema = z.object({
 });
 export type PerCharacterUsage = z.infer<typeof perCharacterUsageSchema>;
 
+/**
+ * per_credit 的用量。定价只看 `credits`（上游返回的实际积分；预扣阶段的 pending 行是 0）。
+ * 积分是独立口径，同一条 per_credit 费率可以挂在生图或对话模型上，
+ * 底下那次调用的原始用量嵌在 `detail` 里，形状与该模态自己的计费口径一模一样
+ * （生图 = per_image 形、对话 = per_token 形……），好让同一个模型换定价方式后历史行仍可比。
+ * `detailKind` 是判别字段——token 形与 per_call 形同构，光看键名分不开；`none` = 没有可记的原始用量。
+ * 老行（张数 / 档位铺在根上、没有 `detailKind`）由后端读回时折成 `image` 明细，前端不再见到那种形状。
+ */
+const perCreditUsageBaseShape = {
+  // 积分可以是小数（Kiro 报 0.028 这种），不加 int()。
+  credits: z.number().nonnegative().default(0),
+};
+export const perCreditUsageSchema = z.discriminatedUnion('detailKind', [
+  z.object({ ...perCreditUsageBaseShape, detailKind: z.literal('none'), detail: z.null().optional() }),
+  z.object({
+    ...perCreditUsageBaseShape,
+    detailKind: z.literal('image'),
+    detail: perImageUsageSchema.nullable().optional(),
+  }),
+  z.object({
+    ...perCreditUsageBaseShape,
+    detailKind: z.enum(['token', 'embedding']),
+    detail: perTokenUsageSchema.nullable().optional(),
+  }),
+  z.object({
+    ...perCreditUsageBaseShape,
+    detailKind: z.literal('audio'),
+    detail: perAudioMinuteUsageSchema.nullable().optional(),
+  }),
+  z.object({
+    ...perCreditUsageBaseShape,
+    detailKind: z.literal('video'),
+    detail: perVideoUsageSchema.nullable().optional(),
+  }),
+  z.object({
+    ...perCreditUsageBaseShape,
+    detailKind: z.literal('character'),
+    detail: perCharacterUsageSchema.nullable().optional(),
+  }),
+]);
+export type PerCreditUsage = z.infer<typeof perCreditUsageSchema>;
+export type PerCreditUsageDetailKind = PerCreditUsage['detailKind'];
+
 // ---------- cost 子形状（按 billingType） ----------
 
 /** 单一维度的"单价 + 实际扣费"快照对。 */
@@ -163,6 +206,12 @@ export const perCharacterCostSchema = z.object({
 });
 export type PerCharacterCost = z.infer<typeof perCharacterCostSchema>;
 
+export const perCreditCostSchema = z.object({
+  pricePerCredit: z.number().nonnegative(),
+  ...costContextShape,
+});
+export type PerCreditCost = z.infer<typeof perCreditCostSchema>;
+
 // ---------- content：请求上下文（后端 usage_logs.content jsonb 镜像） ----------
 
 /**
@@ -211,6 +260,16 @@ export const logContentSchema = z.object({
     })
     .nullable()
     .optional(),
+  /**
+   * 上游报的积分（Kiro 的 credits、NovelAI 的 Anlas），可以是小数。不论这条路由按什么计费都有：
+   * 按 token 计费的渠道也记，用来对账上游成本；per_credit 路由上它就是 `usage.credits` 那个数。没报为 null。
+   */
+  credits: z.number().nonnegative().nullable().optional(),
+  /**
+   * 返回给调用方的终止原因原文（`stop` / `length` / `end_turn` / `max_tokens` / `MAX_TOKENS` …）。
+   * 按调用方协议原样记、不归一，排查时才对得上客户端看到的；同样不收成枚举。没观测到为 null。
+   */
+  stopReason: z.string().min(1).nullable().optional(),
 });
 export type LogContent = z.infer<typeof logContentSchema>;
 
@@ -330,6 +389,12 @@ export const logEntrySchema = z.discriminatedUnion('billingType', [
     billingType: z.literal('per_character'),
     usage: perCharacterUsageSchema,
     cost: perCharacterCostSchema,
+  }),
+  z.object({
+    ...logEntryBaseShape,
+    billingType: z.literal('per_credit'),
+    usage: perCreditUsageSchema,
+    cost: perCreditCostSchema,
   }),
   /**
    * 定价快照缺失时后端下发的兜底分支（`UsageLogMapper`：`rate?.BillingType ?? "unknown"`）——
