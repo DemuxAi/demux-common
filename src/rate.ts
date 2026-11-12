@@ -17,7 +17,10 @@ export const perTokenRateSchema = z.object({
   input: z.object({
     perMToken: z.number().nonnegative(),
     cachedRead: z.number().nonnegative().optional(),
+    /** 缓存写，5 分钟档。 */
     cachedWrite: z.number().nonnegative().optional(),
+    /** 缓存写，1 小时档。缺省时后端按 5 分钟档 × 1.6（官方两档之比 2x / 1.25x）计。 */
+    cachedWrite1h: z.number().nonnegative().optional(),
     audio: z.number().nonnegative().optional(),
   }),
   output: z.object({

@@ -35,7 +35,10 @@ export const perTokenUsageSchema = z.object({
   input: z.object({
     tokens: z.number().int().nonnegative(),
     cachedReadTokens: z.number().int().nonnegative(),
+    /** 缓存写总量，不分 TTL。 */
     cachedWriteTokens: z.number().int().nonnegative(),
+    /** `cachedWriteTokens` 里按 1 小时 TTL 写入的那部分（子集）。为 0 时后端不下发这个键。 */
+    cachedWrite1hTokens: z.number().int().nonnegative().optional(),
     audioTokens: z.number().int().nonnegative(),
   }),
   output: z.object({
@@ -56,6 +59,7 @@ export const perCallUsageSchema = z.object({
       tokens: z.number().int().nonnegative(),
       cachedReadTokens: z.number().int().nonnegative(),
       cachedWriteTokens: z.number().int().nonnegative(),
+      cachedWrite1hTokens: z.number().int().nonnegative().optional(),
       audioTokens: z.number().int().nonnegative(),
     })
     .default({ tokens: 0, cachedReadTokens: 0, cachedWriteTokens: 0, audioTokens: 0 }),
@@ -154,7 +158,10 @@ export const perTokenCostSchema = z.object({
     perMToken: z.number().nonnegative(),
     amount: z.number().nonnegative(),
     cachedRead: dimensionCostSchema,
+    /** 5 分钟档缓存写：这一档的单价与金额，不含 1 小时档。 */
     cachedWrite: dimensionCostSchema,
+    /** 1 小时档缓存写。没升级的后端不带这一项。 */
+    cachedWrite1h: dimensionCostSchema.optional(),
     audio: dimensionCostSchema,
   }),
   output: z.object({
