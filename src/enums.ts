@@ -299,6 +299,7 @@ export const KNOWN_LOG_ERROR_CODES = [
   'vendor_timeout',
   'vendor_bad_request',
   'vendor_refused',
+  'vendor_policy_rejected',
   'rate_limited',
   'context_too_long',
   'cancelled',
@@ -322,6 +323,8 @@ export const LogErrorCodeLabel: Readonly<Record<KnownLogErrorCode, string>> = {
   vendor_bad_request: '上游不接受请求',
   // 厂商收下了请求但不肯答（内容策略等），跟请求体写法无关。
   vendor_refused: '上游拒答',
+  // 厂商平台自己的内容围栏拦了请求（模型没看到），这类调用会被扣固定罚金；和模型拒答（vendor_refused）是两回事。
+  vendor_policy_rejected: '内容违规拦截',
   rate_limited: '被限流',
   context_too_long: '上下文超长',
   cancelled: '已取消',
