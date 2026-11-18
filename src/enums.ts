@@ -283,6 +283,9 @@ export const AiUsageStatusLabel: Readonly<Record<AiUsageStatus, string>> = {
  * 上游没给码时：仅 4xx/5xx 才拿 HTTP 状态码字符串顶上（"500" / "429" …），
  * 这种纯数字码不进字典，由 {@link logErrorCodeText} 统一渲染成 `HTTP 500`。
  * 失败但既没码也没错误 HTTP 时 `content.error` 为 null，不捏造 `upstream_error`。
+ *
+ * OneApi 在 2026-11-18 把对端从「upstream」改叫「vendor」：`upstream_error` / `upstream_timeout` 此后发出来是
+ * `vendor_error` / `vendor_timeout`。旧码不能删——改名前写入的日志行里还是旧值，删了就退回显示原始码。
  */
 export const KNOWN_LOG_ERROR_CODES = [
   'billing_commit_failed',
@@ -292,6 +295,10 @@ export const KNOWN_LOG_ERROR_CODES = [
   'upstream_5xx',
   'upstream_4xx',
   'upstream_timeout',
+  'vendor_error',
+  'vendor_timeout',
+  'vendor_bad_request',
+  'vendor_refused',
   'rate_limited',
   'context_too_long',
   'cancelled',
@@ -308,6 +315,13 @@ export const LogErrorCodeLabel: Readonly<Record<KnownLogErrorCode, string>> = {
   upstream_5xx: '上游 5xx',
   upstream_4xx: '上游 4xx',
   upstream_timeout: '上游超时',
+  // 改名后的码沿用旧码的文案：同一种失败不该因为写入时间不同而换说法。
+  vendor_error: '上游异常',
+  vendor_timeout: '上游超时',
+  // 厂商回了 400 而 Provider 认不出是哪一种，多半是请求体它不认。
+  vendor_bad_request: '上游不接受请求',
+  // 厂商收下了请求但不肯答（内容策略等），跟请求体写法无关。
+  vendor_refused: '上游拒答',
   rate_limited: '被限流',
   context_too_long: '上下文超长',
   cancelled: '已取消',
