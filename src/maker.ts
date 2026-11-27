@@ -56,6 +56,26 @@ export function makerLabel(key: string | null | undefined): string {
   return k.charAt(0).toUpperCase() + k.slice(1);
 }
 
+/**
+ * 模型家族的叫法。家族和厂家是同一个键，只是有几家大家平时叫的是产品线的名字——
+ * 渠道里说的是「Claude 的倍率」「Gemini 的倍率」，不是 Anthropic / Google 的倍率。没有另起名的沿用厂家名。
+ */
+const FAMILY_LABELS: Readonly<Record<string, string>> = {
+  anthropic: 'Claude',
+  google: 'Gemini',
+  moonshot: 'Kimi',
+  zhipu: 'GLM',
+  xai: 'Grok',
+  meta: 'Llama',
+  baidu: '文心',
+  tencent: '混元',
+};
+
+export function modelFamilyLabel(key: string | null | undefined): string {
+  const k = key?.trim().toLowerCase() ?? '';
+  return FAMILY_LABELS[k] ?? makerLabel(key);
+}
+
 /** 分组排序：认识的按 order，不认识的按字母排在后面，`other` 永远最后。 */
 export function makerOrder(key: string): number {
   if (key === MAKER_OTHER) return Number.MAX_SAFE_INTEGER;

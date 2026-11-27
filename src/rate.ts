@@ -137,7 +137,7 @@ const rateBaseShape = {
   currency: z.string(),
   /**
    * 编译审计：这条有效价由价格表里哪个键的基准价 × 哪个倍率算出来。
-   * 价格表是号池管理台发布的，没有行号，按键认行。手工写入的有效价、积分渠道编出来的有效价两者皆空。
+   * 价格表是号池管理台发布的，没有行号，按键认行。手工写入的有效价、继承按次 / 积分分组编出来的有效价两者皆空。
    */
   sourceModelKey: z.string().nullable().optional(),
   multiplierApplied: z.number().nullable().optional(),
@@ -171,14 +171,16 @@ export type UpsertRateInput = z.infer<typeof upsertRateInputSchema>;
 // ---------- 价格表（基准价，只读） ----------
 
 /**
- * 有效价 / 账单币种。价格表是美元，编译：美元 × 渠道倍率 = 人民币。不再另乘 7。
+ * 有效价 / 账单币种。价格表是美元，编译：美元 × 倍率 = 人民币。不再另乘 7。
+ * 倍率是模型家族的分组倍率，或别名自己的独立倍率（见 {@link VendorFamilyPricing}）；
+ * 分组也可以不用倍率，直接定按次价或积分单价，那就不看价格表。
  */
 export const PRICE_CURRENCY = 'CNY' as const;
 
 /** 价格表的币种。号池管理台发布的就是美元，这里不折人民币。 */
 export const MODEL_PRICE_CURRENCY = 'USD' as const;
 
-/** 遗留 CNY 牌价折回美元用 1/7。编译不再自动乘这个数——渠道倍率由渠道自己填。 */
+/** 遗留 CNY 牌价折回美元用 1/7。编译不再自动乘这个数——倍率由运营按模型家族自己填。 */
 export const USD_CNY_FIXED_RATE = 7 as const;
 
 export const modelCapabilitiesSchema = z.object({
@@ -208,7 +210,7 @@ const modelPriceBaseShape = {
    */
   capabilities: modelCapabilitiesSchema.nullable().optional(),
   /**
-   * 跟着这条基准价走的在用路由数（继承渠道定价、对到这个键上的；积分渠道的不算）。
+   * 跟着这条基准价走的在用路由数（按牌价 × 倍率出价、对到这个键上的；继承按次 / 积分分组的不算）。
    * 只有分页的目录视图填；按厂家分组的视图和单条查询不填，是 0。
    */
   routeCount: z.number().int().nonnegative(),
@@ -232,14 +234,52 @@ export interface ModelPriceMakerGroup {
 
 // ---------- 倍率 / 编译 ----------
 
-/** 路由有效价的来路：渠道定价（价格表 × 渠道倍率）/ 管理员自己写。 */
+/**
+ * 路由有效价的来路：`compiled` 由后端算出来 / `manual` 管理员自己写。
+ * `compiled` 下价从哪来，看路由有没有独立倍率（{@link RouteRateEntry.priceMultiplier}）：有就是价格表 × 它；
+ * 没有就继承所在模型家族的分组定价（{@link VendorFamilyPricing}）。
+ */
 export const routePricingModeValues = ['compiled', 'manual'] as const;
 export type RoutePricingMode = (typeof routePricingModeValues)[number];
 
 export const RoutePricingModeLabel: Record<RoutePricingMode, string> = {
-  compiled: '渠道定价',
+  compiled: '跟随定价',
   manual: '自定义',
 };
+
+/**
+ * 家族分组怎么给继承它的别名定价，决定 `value` 怎么解释：
+ * - `multiplier`：有效价(CNY) = 价格表基准价(USD) × 值，按 token 等用量计费。
+ * - `per_call`：值就是有效价，人民币 / 每次调用；不看价格表，也不看用了多少 token。
+ * - `credit`：值就是有效价，人民币 / 每 1 上游积分；按上游报的积分计费，不看价格表。
+ */
+export const familyPricingModeValues = ['multiplier', 'per_call', 'credit'] as const;
+export type FamilyPricingMode = (typeof familyPricingModeValues)[number];
+
+export const FamilyPricingModeLabel: Record<FamilyPricingMode, string> = {
+  multiplier: '倍率',
+  per_call: '按次',
+  credit: '积分',
+};
+
+/**
+ * 渠道里一个模型家族的分组定价。家族不是手工建的：后端照别名的上游模型名归类（claude → `anthropic`、
+ * gemini → `google`，认不出的进 `other`），键就是厂家键（见 maker.ts），展示名用 `modelFamilyLabel`。
+ *
+ * 价格只定在这里，渠道自己不管价格——同一个渠道里 Claude 和 Gemini 的进价、结算方式往往不一样。
+ * 家族下的别名默认继承它，也可以各自设独立倍率或自定义有效价。
+ */
+export interface VendorFamilyPricing {
+  family: string;
+  /** 定价方式；默认 `multiplier`。 */
+  mode: FamilyPricingMode;
+  /** 含义随 `mode`：倍率、人民币 / 次、人民币 / 积分（最多 6 位小数，0 = 免费）。默认倍率 1——那就是定价，不存在「没定」。 */
+  value: number;
+  /** 这个家族在渠道里的别名数（已下线的也算，已删除的不算）。 */
+  routeCount: number;
+  /** 其中继承分组定价的：改分组定价会跟着重算的就是这些。 */
+  inheritingRouteCount: number;
+}
 
 export interface PriceCompileResult {
   compiled: number;
@@ -273,9 +313,25 @@ export interface RouteRateEntry {
   /** 路由主键；切换定价模式 / 改路由倍率要用。旧后端不下发时为 null。 */
   routeId: string | null;
   pricingMode: RoutePricingMode;
-  /** 路由级倍率覆盖；null = 只用渠道倍率。 */
+  /**
+   * 独立倍率：有值就按「牌价 × 本值」出价，顶掉家族分组的定价（不叠乘）；null = 继承家族分组定价。
+   * 只在 `compiled` 时有意义。
+   */
   priceMultiplier: number | null;
+  /** 所在模型家族的键，后端判的；页面按它把别名归到分组下。旧后端不下发时由适配层照模型名推。 */
+  family: string;
+  /**
+   * 是否下发到网页聊天（对话框 / 画图框的模型列表）。定了价的别名默认都下发，不再按计费方式挑；
+   * 关了只是网页里选不到，API Key 照样能调。旧后端不下发时按开算。
+   */
+  chatVisible: boolean;
 }
+
+/**
+ * 网页聊天里没有入口的计费方式：按秒（视频 / 音频）、按字符。开关开着也不会出现在网页聊天里——
+ * 对话框照 token 报用量，这几种会算成 0 元。判定和网关下发时一致。
+ */
+export const CHAT_UNSUPPORTED_BILLING_TYPES: readonly string[] = ['per_video', 'per_audio_minute', 'per_character'];
 
 export interface VendorModelGroup {
   vendorKey: string;
@@ -305,8 +361,10 @@ export interface UnconfiguredRoute {
   routeKey: string;
   vendorKey: string;
   vendorModel: string;
-  /** 切到渠道定价要用；旧后端不下发时为 null。 */
+  /** 切到继承定价要用；旧后端不下发时为 null。 */
   routeId: string | null;
+  /** 所在模型家族的键；定价时继承的就是这个家族的分组定价。 */
+  family: string;
 }
 
 export interface UnconfiguredRoutePage {
